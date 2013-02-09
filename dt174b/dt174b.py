@@ -105,8 +105,11 @@ class DT174B(object):
             raise DT174BError('Device %s:%s not found.', VENDOR, PRODUCT)
 
         # Try detaching the kernel driver.
-        if self.dev.is_kernel_driver_active(0):
-            self.dev.detach_kernel_driver(0)
+        try:
+            if self.dev.is_kernel_driver_active(0):
+                self.dev.detach_kernel_driver(0)
+        except usb.USBError as e:
+            self.LOGGER.warning("Couldn't detach the kernel driver: %s", e)
 
         self.dev.set_configuration()
         self.cfg = self.dev.get_active_configuration()
@@ -297,16 +300,22 @@ class DownloadAction(AbstractAction):
             print line.encode('hex')
 
 
+def module_relative_path(path):
+    import os.path
+    return os.path.join(os.path.dirname(__file__), path)
+
+
 def setup_logging():
     import logging.config
     import yaml
-    D = yaml.load(open('logging.conf', 'r'))
+    with open(module_relative_path('logging.conf'), 'r') as logging_config:
+        D = yaml.load(logging_config)
     D.setdefault('version', 1)
     logging.config.dictConfig(D)
 
 
-
 def main():
+    import sys
     setup_logging()
 
     parser = argparse.ArgumentParser(description=DESCRIPTION,
@@ -316,7 +325,19 @@ def main():
     for action in (SetAction(), DownloadAction()):
         action.register(subparsers)
     opts = parser.parse_args()
-    opts.func(opts)
+    try:
+        opts.func(opts)
+    except usb.core.USBError as err:
+        if 'Access denied' in unicode(err):
+            print >>sys.stderr
+            print >>sys.stderr, err
+            print >>sys.stderr, ('Perhaps you need to get added to the user '
+                                 'group "datalogger", or you need root '
+                                 'priviledges.')
+            print >>sys.stderr
+            sys.exit(err.args[0])
+        else:
+            raise
 
 
 if __name__ == '__main__':
