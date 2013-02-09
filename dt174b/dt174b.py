@@ -18,6 +18,7 @@
 
 from abc import ABCMeta, abstractmethod
 import argparse
+from datetime import datetime
 import logging
 from collections import namedtuple
 from struct import pack, unpack
@@ -184,7 +185,7 @@ class DT174B(object):
         iep, oep = self._get_eps()
         self._send_control(REQTYPE_HOST_TO_DEVICE, 2, 0x2)
         assert 3 == self._write_oep('0e4000'.decode('hex'))
-        LOGGER.debug('> %s', self._write_oep(packet.pack()))
+        self._write_oep(packet.pack())
         assert '\xff' == iep.read(256).tostring()
         self._send_control(REQTYPE_HOST_TO_DEVICE, 2, 0x4)
 
@@ -231,7 +232,7 @@ class DT174B(object):
     def _write_oep(self, data):
         LOGGER = logging.getLogger('DT174B.write')
         LOGGER.debug('> %s', data.encode('hex'))
-        self.oep.write(data)
+        return self.oep.write(data)
 
     def _read_iep(self, *args, **kwargs):
         data = self.iep.read(*args, **kwargs).tostring()
@@ -268,25 +269,49 @@ class SetAction(AbstractAction):
     help = 'Set and start the logging.'
 
     def add_options(self, parser):
-        parser.add_argument('--rec_int', default=10,
-                help='REC LED blinking interval')
-        parser.add_argument('--alm_int', default=10,
-                help='ALM LED bLinking interval')
-        parser.add_argument('--smpl_int', default=1,
-                help='Sampling interval')
-        parser.add_argument('--auto', action='store_true',
-                help='Whether to automaticaly start loging.')
-        return
-        self.temp_high * 100, self.temp_low * 100,
-        self.hum_high * 10, self.hum_low * 10,
-        self.pressure_high * 10 - 10132,
-        self.pressure_low  * 10 - 10132,
-        0x5a,
-        self.alt, self.samples
+        parser.add_argument(
+            '--rec_int', type=int, default=10,
+            help='REC LED blinking interval')
+        parser.add_argument(
+            '--alm_int', type=int, default=10,
+            help='ALM LED bLinking interval')
+        parser.add_argument(
+            '--smpl_int', type=int, default=1,
+            help='Sampling interval')
+        parser.add_argument(
+            '--auto', action='store_true',
+            help='Whether to automaticaly start loging.')
+        parser.add_argument(
+            '--temp', type=float, nargs=2, metavar=('LOW', 'HIGH'),
+            default=(5.5, 40.5),
+            help='Temperature alarm thresholds.')
+        parser.add_argument(
+            '--humidity', type=float, nargs=2, metavar=('LOW', 'HIGH'),
+            default=(30.5, 90.5),
+            help='Humidity alarm thresholds.')
+        parser.add_argument(
+            '--pressure', type=float, nargs=2, metavar=('LOW', 'HIGH'),
+            default=(700, 1100),
+            help='Pressure alarm thresholds.')
+        parser.add_argument(
+            '--altitude', type=float, dest='alt', default=0,
+            help='Altitude adjustment.')
+        parser.add_argument(
+            '--samples', type=int, default=10000,
+            help='How many samples to take.')
 
     def __call__(self, args):
-        raise NotImplementedError()
-        DT174B().send_settings() # TODO
+        settings = vars(args)
+        settings['temp_low'], settings['temp_high'] = settings['temp']
+        settings['hum_low'], settings['hum_high'] = settings['humidity']
+        settings['pressure_low'], settings['pressure_high'] = settings['pressure']
+        del settings['func']
+        del settings['temp'], settings['humidity'], settings['pressure']
+        now = datetime.now().timetuple()
+        p = SettingsPacket(*now[:6], **settings)
+        logger = DT174B()
+        logger.reset()
+        logger.send_settings(p)
 
 
 class DownloadAction(AbstractAction):
