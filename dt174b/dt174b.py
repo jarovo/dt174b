@@ -128,7 +128,7 @@ class DT174B(object):
         BUF_SIZE = 128
         LOGGER = logging.getLogger('DT174B.read_log')
 
-        with self._known_state():
+        with self._temporary_device_state(0x2, 0x4):
             # Retrieve the settings packet.
             self._write_oep(DOWNLOAD_INIT_CMD)
 
@@ -165,26 +165,34 @@ class DT174B(object):
                         remaining, total - remaining, total)
 
     @contextmanager
-    def _known_state(self):
+    def _temporary_device_state(self, pre_state, post_state):
+        '''
+        The device seems to be listening to commands only after it has been put
+        to some special state. This context manager ensures the device is first
+        set to the state `pre_state` -- the temporary state. Then it yields.
+        After the real work is done, it finally sets the device to `post_state`.
+        '''
         try:
-            self.LOGGER.info('Setting device to state 0x2.')
-            self._send_control(REQTYPE_HOST_TO_DEVICE, 2, 0x2)
+            self.LOGGER.debug('Setting device to state %s.', hex(pre_state))
+            self._send_control(REQTYPE_HOST_TO_DEVICE, 2, pre_state)
             yield
         finally:
-            self.LOGGER.info('Setting device to state 0x4.')
-            self._send_control(REQTYPE_HOST_TO_DEVICE, 2, 0x4)
+            self.LOGGER.debug('Setting device to state %s.', hex(post_state))
+            self._send_control(REQTYPE_HOST_TO_DEVICE, 2, post_state)
 
     def send_settings(self, packet):
+        # The function of the 0xffff command is unknown. Following code hunk is
+        # probably redundant. We are only simulating the windows driver there.
         try:
             self._send_control(REQTYPE_HOST_TO_DEVICE, 0, 0xffff)
         except usb.USBError:
             # Pipe Error
             pass
-        self._send_control(REQTYPE_HOST_TO_DEVICE, 2, 0x2)
-        assert 3 == self._write_oep('0e4000'.decode('hex'))
-        self._write_oep(packet.pack())
-        assert '\xff' == self._read_iep(256)
-        self._send_control(REQTYPE_HOST_TO_DEVICE, 2, 0x4)
+
+        with self._temporary_device_state(0x2, 0x4):
+            assert 3 == self._write_oep('0e4000'.decode('hex'))
+            self._write_oep(packet.pack())
+            assert '\xff' == self._read_iep(256)
 
     def _get_eps(self):
         interface_number = self.cfg[(0, 0)].bInterfaceNumber
