@@ -37,6 +37,11 @@ REQTYPE_DEVICE_TO_HOST = 0xc0
 FORMAT  = '!' + 'BBBBBHBBB' + 'BBHB' 'hh' 'HH' 'hh' 'BhH'
 XFORMAT = '!' + 'BBBBBHxxx' + 'BBHB' 'hh' 'HH' 'hh' 'xhH'
 
+# Some magic values that were found out by listening the USB.
+DOWNLOAD_INIT_CMD = '0f0000'.decode('hex')
+DOWNLOAD_INIT_RES_PRFIX = 0xf
+DOWNLOAD_CHUNK_OK_RES = 'fe0100'.decode('hex')
+
 
 _Settings = namedtuple('SettingsPacket', '''
     year month day hour min sec
@@ -122,14 +127,13 @@ class DT174B(object):
     def read_log(self):
         BUF_SIZE = 128
         LOGGER = logging.getLogger('DT174B.read_log')
-        OK_RESPONSE = 'fe0100'.decode('hex')
 
         with self._known_state():
             # Retrieve the settings packet.
-            self._write_oep(pack('BBB', 0x0f, 0, 0))
+            self._write_oep(DOWNLOAD_INIT_CMD)
 
             cmd, total = unpack('>BH', self._read_iep(BUF_SIZE))
-            assert cmd == 'f0'
+            assert cmd == DOWNLOAD_INIT_RES_PRFIX, 'cmd was %s' % hex(cmd)
 
             settings_pkt = self._read_iep(BUF_SIZE)
             LOGGER.debug(settings_pkt.encode('hex'))
@@ -144,7 +148,7 @@ class DT174B(object):
                 i += 1
                 wdata = pack('BBB', 0x0f, i, 0)
                 self._write_oep(wdata)
-                assert OK_RESPONSE == self._read_iep(BUF_SIZE)
+                assert DOWNLOAD_CHUNK_OK_RES == self._read_iep(BUF_SIZE)
                 LOGGER.info('Bytes remaining: %d, read %s, total %s.', 
                             remaining, total - remaining, total)
                 try:
