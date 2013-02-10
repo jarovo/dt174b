@@ -20,7 +20,7 @@ import logging
 from collections import namedtuple
 from struct import pack, unpack
 from contextlib import contextmanager
-from itertools import islice
+from itertools import islice, chain
 
 import usb
 import usb.core
@@ -84,9 +84,21 @@ def split_every(n, iterable):
 
 
 def data_parser(reader):
-    for packet in reader:
-        pressure, temp, hum = unpack('hHh', packet)
-        yield (pressure - 10132) * 10, temp * 100, hum * 10
+    '''
+    Parses the output of reader, yielding pressure, temp and humidity values.
+    '''
+    pres = lambda x: (x + 10132) / 10.
+    temp = lambda x: x/10.
+    hum = lambda x: x/10.
+    # One measurement is 6 bytes.
+    measurements = split_every(6, chain.from_iterable(reader))
+    # The chain returns list, when unpack needs strings.
+    measurements = (''.join(m) for m in measurements)
+    # Unpack the values.
+    measurements = (unpack('!hHh', m) for m in measurements)
+    # Transform them into floats.
+    measurements = ((pres(p), temp(t), hum(h)) for p, t, h in measurements)
+    return measurements
 
 
 class DT174BError(Exception):

@@ -112,8 +112,8 @@ class DownloadAction(AbstractAction):
     def __call__(self, args):
         logger = dt174b.DT174B()
         logger.reset()
-        for line in logger.read_log():
-            print line.encode('hex')
+        for pressure, temp, humidity in dt174b.data_parser(logger.read_log()):
+            print pressure, temp, humidity
 
 
 def module_relative_path(path):
