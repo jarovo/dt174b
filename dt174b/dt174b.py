@@ -26,6 +26,7 @@ import usb
 import usb.core
 import usb.util
 
+BUF_SIZE = 128
 
 VENDOR, PRODUCT = 0x10c4, 0xea61
 
@@ -137,7 +138,6 @@ class DT174B(object):
         self.start()
 
     def read_log(self):
-        BUF_SIZE = 128
         LOGGER = logging.getLogger('DT174B.read_log')
 
         with self._temporary_device_state(0x2, 0x4):
@@ -204,7 +204,7 @@ class DT174B(object):
         with self._temporary_device_state(0x2, 0x4):
             assert 3 == self._write_oep('0e4000'.decode('hex'))
             self._write_oep(packet.pack())
-            assert '\xff' == self._read_iep(256)
+            assert '\xff' == self._read_iep(BUF_SIZE)
 
     def _get_eps(self):
         interface_number = self.cfg[(0, 0)].bInterfaceNumber
