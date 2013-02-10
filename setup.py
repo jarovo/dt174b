@@ -60,7 +60,7 @@ setup(
             """),
     entry_points = {
         'console_scripts': [
-            'dt174b = dt174b.dt174b:main'
+            'dt174b = dt174b.cli:main'
         ]
     },
     requires = "pyusb pyaml".split(),
