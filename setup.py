@@ -63,7 +63,7 @@ setup(
             'dt174b = dt174b.cli:main'
         ]
     },
-    requires = "pyusb pyaml".split(),
+    install_requires = "pyusb pyaml".split(),
     keywords = "cem datalogger weather usb",
     license = "GNU GPLv3",
     name='dt174b',
