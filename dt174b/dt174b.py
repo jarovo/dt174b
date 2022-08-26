@@ -18,9 +18,11 @@
 
 import logging
 from collections import namedtuple
-from struct import pack, unpack
+from struct import pack, unpack, calcsize
 from contextlib import contextmanager
 from itertools import islice, chain
+import binascii
+from itertools import tee
 
 import usb
 import usb.core
@@ -39,9 +41,9 @@ FORMAT  = '!' + 'BBBBBHBBB' + 'BBHB' 'hh' 'HH' 'hh' 'BhH'
 XFORMAT = '!' + 'BBBBBHxxx' + 'BBHB' 'hh' 'HH' 'hh' 'xhH'
 
 # Some magic values that were found out by listening the USB.
-DOWNLOAD_INIT_CMD = '0f0000'.decode('hex')
+DOWNLOAD_INIT_CMD = bytearray.fromhex('0f0000')
 DOWNLOAD_INIT_RES_PRFIX = 0xf
-DOWNLOAD_CHUNK_OK_RES = 'fe0100'.decode('hex')
+DOWNLOAD_CHUNK_OK_RES = bytearray.fromhex('fe0100')
 
 
 _Settings = namedtuple('SettingsPacket', '''
@@ -91,14 +93,19 @@ def data_parser(reader):
     pres = lambda x: (x + 10132) / 10.
     temp = lambda x: x/10.
     hum = lambda x: x/10.
-    # One measurement is 6 bytes.
-    measurements = split_every(6, chain.from_iterable(reader))
-    # The chain returns list, when unpack needs strings.
-    measurements = (''.join(m) for m in measurements)
-    # Unpack the values.
-    measurements = (unpack('!hHh', m) for m in measurements)
-    # Transform them into floats.
-    measurements = ((pres(p), temp(t), hum(h)) for p, t, h in measurements)
+    
+    # One measurement consits of triplet of 6 bytes total.
+    measurement_format = 'hHh'
+    measurement_format_size = calcsize(measurement_format)
+    
+    # We are gonna unpack the whole buffer.
+    buf = b''.join(reader)
+    buf_len = len(buf)
+    buf_format = '!{}'.format(measurement_format*(buf_len//measurement_format_size))
+    measurements = unpack(buf_format, buf)
+    
+    # Transform them into floats triplets.
+    measurements = ((pres(p), temp(t), hum(h)) for p, t, h in split_every(3, measurements))
     return measurements
 
 
@@ -138,6 +145,9 @@ class DT174B(object):
         self.start()
 
     def read_log(self):
+        """
+        Reads the data log.
+        """
         LOGGER = logging.getLogger('DT174B.read_log')
 
         with self._temporary_device_state(0x2, 0x4):
@@ -148,7 +158,7 @@ class DT174B(object):
             assert cmd == DOWNLOAD_INIT_RES_PRFIX, 'cmd was %s' % hex(cmd)
 
             settings_pkt = self._read_iep(BUF_SIZE)
-            LOGGER.debug(settings_pkt.encode('hex'))
+            LOGGER.debug(binascii.hexlify(settings_pkt))
 
             # Parse the settings packet.
             settings = SettingsPacket.unpack(settings_pkt)
@@ -202,7 +212,7 @@ class DT174B(object):
             pass
 
         with self._temporary_device_state(0x2, 0x4):
-            assert 3 == self._write_oep('0e4000'.decode('hex'))
+            assert 3 == self._write_oep(bytearray.fromhex(b'0e4000'))
             self._write_oep(packet.pack())
             assert '\xff' == self._read_iep(BUF_SIZE)
 
@@ -248,13 +258,13 @@ class DT174B(object):
 
     def _write_oep(self, data):
         LOGGER = logging.getLogger('DT174B.write')
-        LOGGER.debug('> %s', data.encode('hex'))
+        LOGGER.debug('> %s', binascii.hexlify(data))
         return self.oep.write(data)
 
     def _read_iep(self, *args, **kwargs):
         data = self.iep.read(*args, **kwargs).tostring()
         LOGGER = logging.getLogger('DT174B.read')
-        LOGGER.debug('< %s', data.encode('hex'))
+        LOGGER.debug('< %s', binascii.hexlify(data))
         return data
 
     def __del__(self):

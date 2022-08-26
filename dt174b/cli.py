@@ -27,7 +27,7 @@ import sys
 import usb
 import yaml
 
-import dt174b
+from . import dt174b
 
 
 DESCRIPTION = (
@@ -35,8 +35,7 @@ DESCRIPTION = (
 )
 
 
-class AbstractAction(object):
-    __metaclass__ = ABCMeta
+class AbstractAction(object, metaclass=ABCMeta):
     name = None
     help = None
 
@@ -113,7 +112,7 @@ class DownloadAction(AbstractAction):
         logger = dt174b.DT174B()
         logger.reset()
         for pressure, temp, humidity in dt174b.data_parser(logger.read_log()):
-            print pressure, temp, humidity
+            print(pressure, temp, humidity)
 
 
 def module_relative_path(path):
@@ -122,7 +121,7 @@ def module_relative_path(path):
 
 def setup_logging():
     with open(module_relative_path('logging.conf'), 'r') as logging_config:
-        D = yaml.load(logging_config)
+        D = yaml.safe_load(logging_config)
     D.setdefault('version', 1)
     logging.config.dictConfig(D)
 
@@ -140,13 +139,13 @@ def main():
     try:
         opts.func(opts)
     except usb.core.USBError as err:
-        if 'Access denied' in unicode(err):
-            print >> sys.stderr
-            print >> sys.stderr, err
-            print >> sys.stderr, ('Perhaps you need to get added to the user '
+        if 'Access denied' in str(err):
+            print(file=sys.stderr)
+            print(err, file=sys.stderr)
+            print(('Perhaps you need to get added to the user '
                                  'group "datalogger", or you need root '
-                                 'priviledges.')
-            print >> sys.stderr
+                                 'priviledges.'), file=sys.stderr)
+            print(file=sys.stderr)
             sys.exit(err.args[0])
         else:
             raise
